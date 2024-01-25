@@ -20,6 +20,10 @@ func (ctx *Context) Render(tpl string, data any) error {
 	return err
 }
 
+func (ctx *Context) Redirect(url string) {
+	http.Redirect(ctx.Response, ctx.Request, url, http.StatusFound)
+}
+
 func (ctx *Context) RespJSONOK(val any) error {
 	return ctx.RespJSON(http.StatusOK, val)
 }
