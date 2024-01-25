@@ -37,6 +37,12 @@ func (ctx *Context) RespJSON(code int, val any) error {
 	return err
 }
 
+func (ctx *Context) RespString(code int, msg string) error {
+	ctx.RespData = []byte(msg)
+	ctx.RespStatusCode = code
+	return nil
+}
+
 func (ctx *Context) SetCookie(cookie *http.Cookie) {
 	http.SetCookie(ctx.Response, cookie)
 }
