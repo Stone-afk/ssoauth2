@@ -1,6 +1,8 @@
 package sso
 
 import (
+	"fmt"
+	"github.com/google/uuid"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -56,9 +58,71 @@ func TestSSOServer(t *testing.T) {
 	})
 
 	server.Post("/login", func(ctx *context.Context) {
+		email, _ := ctx.FormValue("email").String()
+		pwd, _ := ctx.FormValue("password").String()
 
+		// 这个地方怎么办？是不是要跳回去？
+		path, err := ctx.FormValue("redirect_uri").String()
+		if err != nil {
+			_ = ctx.RespString(http.StatusBadRequest, "登录失败")
+			return
+		}
+		appId, err := ctx.FormValue("app_id").String()
+		if err != nil {
+			_ = ctx.RespString(http.StatusBadRequest, "登录失败")
+			return
+		}
+		// redirect_uri 必须是某个白名单里面的域名
+		decodePath, err := url.PathUnescape(path)
+		if err != nil {
+			_ = ctx.RespString(http.StatusBadRequest, "登录失败")
+			return
+		}
+		target, ok := whiteList[appId]
+		if !ok {
+			_ = ctx.RespString(http.StatusBadRequest, "登录失败")
+			return
+		}
+		//url.Parse()
+		if !strings.HasPrefix(decodePath, "http:"+target) &&
+			!strings.HasPrefix(decodePath, "https:"+target) {
+			_ = ctx.RespString(http.StatusBadRequest, "登录失败")
+			return
+		}
+		// 再去查询数据库
+		if email == "123@qq.com" && pwd == "123456" {
+			ssid := uuid.New().String()
+			// 这边要怎么办？
+			// 在这边你要设置好 session
+			ck := &http.Cookie{
+				Name:   "ssid",
+				Value:  ssid,
+				MaxAge: 1800,
+				// 在 https 里面才能用这个 cookie
+				//Secure: true,
+				// 前端没有办法通过 JS 来访问 cookie
+				HttpOnly: true,
+			}
+			SSOSessionStore[ssid] = Session{
+				// 随便给一个
+				Uid: 123,
+			}
+			ctx.SetCookie(ck)
+			// 带上一个 token，这时候你就要考虑，怎么生成 token？
+			// 这里我假设，你的 token 就是一个 uuid，然后你本地有一个 uuid 列表，
+			token := uuid.New().String()
+			ctx.Redirect(path + fmt.Sprintf("?token=%s", token))
+			return
+		}
+		_ = ctx.RespString(http.StatusBadRequest, "登录失败")
+		return
 	})
 
+	// 这个地方怎么写？
+	// 要有一个新的 HTTP 接口
+	// 要判断登录态，如果没登录就返回登录页面，
+	// 如果登录了，就跳转回去 A/B
+	// 这边主要是安全性问题
 	server.Post("/check_login", func(ctx *context.Context) {
 
 		// 白名单校验提前到这里
@@ -117,4 +181,9 @@ func TestSSOServer(t *testing.T) {
 		ctx.Redirect(path)
 	})
 	_ = server.Start(":8083")
+}
+
+type Session struct {
+	// 我 session 里面放的内容，就是 UID，你有需要你可以继续加
+	Uid uint64
 }
