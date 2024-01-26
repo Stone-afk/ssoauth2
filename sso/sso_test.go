@@ -22,6 +22,11 @@ var whiteList = map[string]string{
 	"app2": "localhost:8082",
 }
 
+var bizRedirectUrl = map[string]string{
+	"app1": "http://app1.com:8081/token?token=%s",
+	"app2": "http://app2.com:8082/token?token=%s",
+}
+
 func TestSSOServer(t *testing.T) {
 	tpls := template.New("test_server")
 	tpls, err := tpls.ParseGlob("./template/*")
@@ -33,21 +38,21 @@ func TestSSOServer(t *testing.T) {
 	}
 	server := web.NewHTTPServer(web.ServerWithTemplateEngine(engine))
 	tokens := cache.New(time.Minute*3, time.Minute)
-
+	sessCache := cache.New(time.Minute*15, time.Minute)
 	server.Post("/hello", func(ctx *context.Context) {
 		_ = ctx.RespString(http.StatusOK, "欢迎来到 SSO")
 	})
 
 	server.Post("/logout", func(ctx *context.Context) {
-		ck, err := ctx.Request.Cookie("ssid")
+		ck, err := ctx.Request.Cookie("sso_ssid")
 		if err != nil {
 			_ = ctx.RespString(http.StatusUnauthorized, "请登录")
 			return
 		}
 		ssid := ck.Value
-		delete(SSOSessionStore, ssid)
+		sessCache.Delete(ssid)
 		ck = &http.Cookie{
-			Name:   "ssid",
+			Name:   "sso_ssid",
 			Value:  ssid,
 			MaxAge: -1,
 			// 在 https 里面才能用这个 cookie
@@ -98,7 +103,7 @@ func TestSSOServer(t *testing.T) {
 			// 这边要怎么办？
 			// 在这边你要设置好 session
 			ck := &http.Cookie{
-				Name:   "ssid",
+				Name:   "sso_ssid",
 				Value:  ssid,
 				MaxAge: 1800,
 				// 在 https 里面才能用这个 cookie
@@ -106,16 +111,14 @@ func TestSSOServer(t *testing.T) {
 				// 前端没有办法通过 JS 来访问 cookie
 				HttpOnly: true,
 			}
-			SSOSessionStore[ssid] = Session{
-				// 随便给一个
-				Uid: 123,
-			}
+			sessCache.Set(ssid, Session{Uid: 123}, time.Minute*15)
 			ctx.SetCookie(ck)
 			// 带上一个 token，这时候你就要考虑，怎么生成 token？
 			// 这里我假设，你的 token 就是一个 uuid，然后你本地有一个 uuid 列表，
 			token := uuid.New().String()
 			tokens.Set(token, appId, time.Minute)
-			ctx.Redirect(path + fmt.Sprintf("?token=%s", token))
+			tokenUrl, _ := bizRedirectUrl[appId]
+			ctx.Redirect(tokenUrl + fmt.Sprintf("?redirect_uri=%s&token=%s", path, token))
 			return
 		}
 		_ = ctx.RespString(http.StatusBadRequest, "登录失败")
@@ -160,7 +163,7 @@ func TestSSOServer(t *testing.T) {
 			return
 		}
 
-		ck, err := ctx.Request.Cookie("ssid")
+		ck, err := ctx.Request.Cookie("sso_ssid")
 		val = ctx.QueryValue("redirect_uri")
 		path, _ = val.String()
 		path, _ = url.PathUnescape(path)
@@ -173,7 +176,7 @@ func TestSSOServer(t *testing.T) {
 
 		// 尽可能在这一句之前，过滤掉非法请求
 		ssid := ck.Value
-		_, ok = SSOSessionStore[ssid]
+		_, ok = sessCache.Get(ssid)
 		if !ok {
 			_ = ctx.Render("login.gohtml", map[string]string{
 				"RedirectURI": path,
@@ -182,7 +185,10 @@ func TestSSOServer(t *testing.T) {
 		}
 		// 这边就是登录了
 		// 要跳回去
-		ctx.Redirect(path)
+		token := uuid.New().String()
+		tokens.Set(token, appId, time.Minute)
+		tokenUrl, _ := bizRedirectUrl[appId]
+		ctx.Redirect(tokenUrl + fmt.Sprintf("?redirect_uri=%s&token=%s", path, token))
 	})
 
 	// token 校验，保护好
