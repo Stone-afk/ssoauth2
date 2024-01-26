@@ -3,6 +3,7 @@ package sso
 import (
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/patrickmn/go-cache"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	webTlp "ssoauth2/web/template"
 	"strings"
 	"testing"
+	"time"
 )
 
 var SSOSessionStore = make(map[string]any)
@@ -30,6 +32,7 @@ func TestSSOServer(t *testing.T) {
 		T: tpls,
 	}
 	server := web.NewHTTPServer(web.ServerWithTemplateEngine(engine))
+	tokens := cache.New(time.Minute*3, time.Minute)
 
 	server.Post("/hello", func(ctx *context.Context) {
 		_ = ctx.RespString(http.StatusOK, "欢迎来到 SSO")
@@ -38,7 +41,7 @@ func TestSSOServer(t *testing.T) {
 	server.Post("/logout", func(ctx *context.Context) {
 		ck, err := ctx.Request.Cookie("ssid")
 		if err != nil {
-			ctx.RespString(http.StatusUnauthorized, "请登录")
+			_ = ctx.RespString(http.StatusUnauthorized, "请登录")
 			return
 		}
 		ssid := ck.Value
@@ -111,6 +114,7 @@ func TestSSOServer(t *testing.T) {
 			// 带上一个 token，这时候你就要考虑，怎么生成 token？
 			// 这里我假设，你的 token 就是一个 uuid，然后你本地有一个 uuid 列表，
 			token := uuid.New().String()
+			tokens.Set(token, appId, time.Minute)
 			ctx.Redirect(path + fmt.Sprintf("?token=%s", token))
 			return
 		}
@@ -180,6 +184,21 @@ func TestSSOServer(t *testing.T) {
 		// 要跳回去
 		ctx.Redirect(path)
 	})
+
+	// token 校验，保护好
+	// 请求来源可以要求一个 app 一个 IP
+	server.Post("/token/validate", func(ctx *context.Context) {
+		token, _ := ctx.QueryValue("token").String()
+		// 可能会有一个解密的过程
+		_, ok := tokens.Get(token)
+		if !ok {
+			_ = ctx.RespString(http.StatusForbidden, "没有权限")
+			return
+		}
+		// 带上用户信息，比如说 uid
+		_ = ctx.RespString(http.StatusOK, "123")
+	})
+
 	_ = server.Start(":8083")
 }
 
