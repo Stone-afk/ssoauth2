@@ -209,6 +209,6 @@ func TestSSOServer(t *testing.T) {
 }
 
 type Session struct {
-	// 我 session 里面放的内容，就是 UID，你有需要你可以继续加
+	// session 里面放的内容，就是 UID，你有需要你可以继续加
 	Uid uint64
 }

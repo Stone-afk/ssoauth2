@@ -2,8 +2,12 @@ package app2
 
 import (
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/patrickmn/go-cache"
+	"io"
+	"net/http"
 	"net/url"
+	"ssoauth2/web"
 	"ssoauth2/web/context"
 	webHandler "ssoauth2/web/handler"
 	"testing"
@@ -13,7 +17,44 @@ import (
 var sessCache = cache.New(time.Minute*15, time.Minute)
 
 func TestApp2Server(t *testing.T) {
+	server := web.NewHTTPServer()
+	server.Use(app2LoginMiddleware)
 
+	server.Get("/profile", func(ctx *context.Context) {
+		_ = ctx.RespString(http.StatusOK, "这是 App2 平台")
+	})
+
+	server.Get("/token", func(ctx *context.Context) {
+		token, _ := ctx.QueryValue("token").String()
+		resp, err := http.Post("http://localhost:8083/token/validate?token="+token,
+			"application/json", nil)
+		if err != nil {
+			_ = ctx.RespString(http.StatusInternalServerError, "服务器故障")
+			return
+		}
+		body, _ := io.ReadAll(resp.Body)
+		if string(body) != "123" {
+			_ = ctx.RespString(http.StatusForbidden, "非法访问")
+			return
+		}
+		ssid := uuid.New().String()
+		sessCache.Set(ssid, Session{Uid: 123}, time.Minute*15)
+		ctx.SetCookie(&http.Cookie{
+			Name:     "app2_ssid",
+			Value:    ssid,
+			Domain:   "app2.com",
+			Expires:  time.Now().Add(time.Minute * 15),
+			HttpOnly: true,
+		})
+		path, err := ctx.QueryValue("redirect_uri").String()
+		if err != nil {
+			_ = ctx.RespString(http.StatusInternalServerError, "服务器故障")
+			return
+		}
+		ctx.Redirect(path)
+	})
+
+	_ = server.Start(":8082")
 }
 
 func app2LoginMiddleware(next webHandler.HandleFunc) webHandler.HandleFunc {
@@ -44,4 +85,9 @@ func app2LoginMiddleware(next webHandler.HandleFunc) webHandler.HandleFunc {
 		ctx.UserValues["sess"] = sess
 		next(ctx)
 	}
+}
+
+type Session struct {
+	// session 里面放的内容，就是 UID，你有需要你可以继续加
+	Uid uint64
 }
