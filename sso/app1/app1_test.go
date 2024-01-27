@@ -16,19 +16,19 @@ import (
 
 var sessCache = cache.New(time.Minute*15, time.Minute)
 
-func TestAServer(t *testing.T) {
+func TestApp1Server(t *testing.T) {
 	server := web.NewHTTPServer()
 	server.Use(app1LoginMiddleware)
-	// 就是处理从 SSO 跳回来的逻辑，也就是说，我要在这里设置登录态
-	// 我可以直接设置吗？
-	server.Get("/health", func(ctx *context.Context) {
-		// 我自己设置一个登录态
-		// 第一个问题：你怎么知道，这个地方就是从 SSO 过来的？
-		// 解析 token
-		// 调用 SSO 的另外一个接口，去解析 token
-		// 到 19:35
-		_ = ctx.RespString(http.StatusOK, "这是 A 平台，你跳回来了")
+	server.Get("/profile", func(ctx *context.Context) {
+		_ = ctx.RespString(http.StatusOK, "这是 App1 平台")
 	})
+	// 就是处理从 SSO 跳回来的逻辑，也就是说，要在这里设置登录态
+	// 可以直接设置吗？
+	// 自己设置一个登录态
+	// 第一个问题：你怎么知道，这个地方就是从 SSO 过来的？
+	// 解析 token
+	// 调用 SSO 的另外一个接口，去解析 token
+	// 到 19:35
 	server.Get("/token", func(ctx *context.Context) {
 		token, _ := ctx.QueryValue("token").String()
 		// 要去解析 token
@@ -51,10 +51,11 @@ func TestAServer(t *testing.T) {
 		ssid := uuid.New().String()
 		sessCache.Set(ssid, Session{Uid: 123}, time.Minute*15)
 		ctx.SetCookie(&http.Cookie{
-			Name:    "app1_ssid",
-			Value:   ssid,
-			Domain:  "app1.com",
-			Expires: time.Now().Add(time.Minute * 15),
+			Name:     "app1_ssid",
+			Value:    ssid,
+			Domain:   "app1.com",
+			Expires:  time.Now().Add(time.Minute * 15),
+			HttpOnly: true,
 		})
 		path, err := ctx.QueryValue("redirect_uri").String()
 		if err != nil {
@@ -63,6 +64,7 @@ func TestAServer(t *testing.T) {
 		}
 		ctx.Redirect(path)
 	})
+
 	_ = server.Start(":8081")
 }
 
@@ -97,6 +99,6 @@ func app1LoginMiddleware(next webHandler.HandleFunc) webHandler.HandleFunc {
 }
 
 type Session struct {
-	// 我 session 里面放的内容，就是 UID，你有需要你可以继续加
+	// session 里面放的内容，就是 UID，你有需要你可以继续加
 	Uid uint64
 }
