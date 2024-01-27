@@ -15,11 +15,9 @@ import (
 	"time"
 )
 
-var SSOSessionStore = make(map[string]any)
-
 var whiteList = map[string]string{
-	"app1": "localhost:8081",
-	"app2": "localhost:8082",
+	"app1": "app1.com:8081",
+	"app2": "app2.com:8081",
 }
 
 var bizRedirectUrl = map[string]string{
@@ -44,7 +42,7 @@ func TestSSOServer(t *testing.T) {
 	})
 
 	server.Post("/logout", func(ctx *context.Context) {
-		ck, err := ctx.Request.Cookie("sso_ssid")
+		ck, err := ctx.Request.Cookie("ssid")
 		if err != nil {
 			_ = ctx.RespString(http.StatusUnauthorized, "请登录")
 			return
@@ -52,9 +50,10 @@ func TestSSOServer(t *testing.T) {
 		ssid := ck.Value
 		sessCache.Delete(ssid)
 		ck = &http.Cookie{
-			Name:   "sso_ssid",
+			Name:   "ssid",
 			Value:  ssid,
 			MaxAge: -1,
+			Domain: "sso.com",
 			// 在 https 里面才能用这个 cookie
 			//Secure: true,
 			// 前端没有办法通过 JS 来访问 cookie
@@ -103,9 +102,10 @@ func TestSSOServer(t *testing.T) {
 			// 这边要怎么办？
 			// 在这边你要设置好 session
 			ck := &http.Cookie{
-				Name:   "sso_ssid",
+				Name:   "ssid",
 				Value:  ssid,
 				MaxAge: 1800,
+				Domain: "sso.com",
 				// 在 https 里面才能用这个 cookie
 				//Secure: true,
 				// 前端没有办法通过 JS 来访问 cookie
@@ -163,7 +163,7 @@ func TestSSOServer(t *testing.T) {
 			return
 		}
 
-		ck, err := ctx.Request.Cookie("sso_ssid")
+		ck, err := ctx.Request.Cookie("ssid")
 		val = ctx.QueryValue("redirect_uri")
 		path, _ = val.String()
 		path, _ = url.PathUnescape(path)

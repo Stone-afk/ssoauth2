@@ -26,7 +26,7 @@ func TestApp2Server(t *testing.T) {
 
 	server.Get("/token", func(ctx *context.Context) {
 		token, _ := ctx.QueryValue("token").String()
-		resp, err := http.Post("http://localhost:8083/token/validate?token="+token,
+		resp, err := http.Post("http://sso.com:8083/token/validate?token="+token,
 			"application/json", nil)
 		if err != nil {
 			_ = ctx.RespString(http.StatusInternalServerError, "服务器故障")
@@ -40,7 +40,7 @@ func TestApp2Server(t *testing.T) {
 		ssid := uuid.New().String()
 		sessCache.Set(ssid, Session{Uid: 123}, time.Minute*15)
 		ctx.SetCookie(&http.Cookie{
-			Name:     "app2_ssid",
+			Name:     "ssid",
 			Value:    ssid,
 			Domain:   "app2.com",
 			Expires:  time.Now().Add(time.Minute * 15),
@@ -65,10 +65,10 @@ func app2LoginMiddleware(next webHandler.HandleFunc) webHandler.HandleFunc {
 		}
 		path := ctx.Request.URL.String()
 		// sso 链接
-		const pattern = "http://localhost:8083/check_login?redirect_uri=%sapp_id=%s"
+		const pattern = "http://sso.com:8083/check_login?redirect_uri=%sapp_id=%s"
 		// URL 编码
 		path = fmt.Sprintf(pattern, url.PathEscape(path), "app2")
-		ck, err := ctx.Request.Cookie("app2_ssid")
+		ck, err := ctx.Request.Cookie("ssid")
 		if err != nil {
 			// 这个地方要考虑跳转，跳过去 SSO 里面
 			ctx.Redirect(path)
